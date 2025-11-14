@@ -5,42 +5,59 @@
     ViewBag.Title = "Orders";
 }
 
-<h2>Orders</h2>
+<h2 class="mb-4 text-center">📦 My Orders</h2>
 
-<div class="mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="text-muted">Total Orders: @Model.Count()</h5>
     <a asp-action="Create" class="btn btn-success">
         <i class="bi bi-plus-circle"></i> Add New Order
     </a>
 </div>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>Customer</th>
-            <th>Products</th>
-            <th>Total Cost</th>
-            <th>Order Date</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var order in Model)
-        {
-            <tr>
-                <td>@order.FirstName @order.LastName</td>
-                <td>@order.ProductNames</td>
-                <td>R @order.TotalCost</td>
-                <td>@order.OrderDate.ToShortDateString()</td>
-                <td>
-                    <a asp-action="Details" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Details</a> |
-                    <a asp-action="Edit" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Edit</a> |
-                    <a asp-action="Delete" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Delete</a>
-                    @if (User.IsInRole("Admin"))
-                    {
-                        <a asp-action="Process" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-warning">Process</a>
-                    }
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
+@if (!Model.Any())
+{
+    <div class="alert alert-info text-center">No orders have been placed yet.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover align-middle text-center">
+            <thead class="table-dark">
+                <tr>
+                    <th>Customer</th>
+                    <th>Products</th>
+                    <th>Total Cost</th>
+                    <th>Order Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var order in Model)
+                {
+                    <tr>
+                        <td>@order.FirstName @order.LastName</td>
+                        <td>@order.ProductNames</td>
+                        <td>R @order.TotalCost.ToString("0.00")</td>
+                        <td>@order.OrderDate.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>
+                            <span class="badge @(order.Status == "Completed" ? "bg-success" : order.Status == "Processing" ? "bg-warning text-dark" : "bg-secondary")">
+                                @order.Status
+                            </span>
+                        </td>
+                        <td>
+                            <a asp-action="Details" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-outline-info me-1">Details</a>
+                            <a asp-action="Edit" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-outline-primary me-1">Edit</a>
+                            <a asp-action="Delete" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-outline-danger me-1">Delete</a>
+
+                            @if (User.IsInRole("Admin"))
+                            {
+                                <a asp-action="Process" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-warning">Process</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

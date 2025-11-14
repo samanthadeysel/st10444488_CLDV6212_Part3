@@ -17,15 +17,20 @@ namespace ST10444488_POE.Controllers
 
         public async Task<IActionResult> Index()
         {
-            var result = await _functionService.CallFunctionAsync("GetOrders", null);
+            var responseBody = await _functionService.CallFunctionAsync("TableStorage", new
+            {
+                Operation = "Query",
+                PartitionKey = "Order",
+                Filter = $"CustomerRowKey eq '{User.Identity.Name}'"
+            });
 
-            if (string.IsNullOrWhiteSpace(result) || result.TrimStart().StartsWith("<"))
+            if (string.IsNullOrWhiteSpace(responseBody) || responseBody.TrimStart().StartsWith("<") || responseBody.TrimStart().StartsWith("T"))
             {
                 ViewBag.Error = "Failed to load orders.";
                 return View(new List<Order>());
             }
 
-            var orders = JsonSerializer.Deserialize<List<Order>>(result);
+            var orders = JsonSerializer.Deserialize<List<Order>>(responseBody);
             return View(orders);
         }
 
@@ -69,10 +74,6 @@ namespace ST10444488_POE.Controllers
             var selectedKeys = order.ProductRowKeys?.Split(',') ?? Array.Empty<string>();
             var selectedProducts = products.Where(p => selectedKeys.Contains(p.RowKey)).ToList();
 
-            order.Quantity = selectedProducts.Count;
-            order.TotalCost = selectedProducts.Sum(p => (decimal)p.Price);
-            order.ProductNames = string.Join(", ", selectedProducts.Select(p => p.Name));
-
             if (string.IsNullOrEmpty(order.CustomerRowKey) || selectedProducts.Count == 0)
             {
                 ModelState.AddModelError("", "Please select a customer and at least one product.");
@@ -89,7 +90,9 @@ namespace ST10444488_POE.Controllers
             order.FirstName = customer.FirstName;
             order.LastName = customer.LastName;
             order.Address = customer.Address;
-
+            order.ProductNames = string.Join(", ", selectedProducts.Select(p => p.Name));
+            order.Quantity = selectedProducts.Count;
+            order.TotalCost = selectedProducts.Sum(p => (decimal)p.Price);
             order.RowKey = Guid.NewGuid().ToString();
             order.PartitionKey = "Order";
             order.OrderDate = DateTime.Now;
@@ -184,7 +187,6 @@ namespace ST10444488_POE.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Process(Order updated)
         {
-            // Only update status
             var result = await _functionService.CallFunctionAsync("GetOrder", new { PartitionKey = updated.PartitionKey, RowKey = updated.RowKey });
             var existing = JsonSerializer.Deserialize<Order>(result);
 

@@ -21,7 +21,7 @@
         <dd class="col-sm-9">@Model.Description</dd>
 
         <dt class="col-sm-3">Price</dt>
-        <dd class="col-sm-9">R @Model.Price</dd>
+        <dd class="col-sm-9">R @Model.Price.ToString("0.00")</dd>
 
         <dt class="col-sm-3">Category</dt>
         <dd class="col-sm-9">@Model.Category</dd>
@@ -36,6 +36,7 @@
     </dl>
 
     <form asp-action="Delete" class="mt-4">
+        <input type="hidden" asp-for="PartitionKey" />
         <input type="hidden" asp-for="RowKey" />
         <button type="submit" class="btn btn-danger me-2">Confirm Delete</button>
         <a asp-action="Index" class="btn btn-secondary">Cancel</a>

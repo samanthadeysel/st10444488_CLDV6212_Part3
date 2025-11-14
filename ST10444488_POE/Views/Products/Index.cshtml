@@ -41,9 +41,25 @@
                 <div class="card-footer text-center">
                     @if (User.Identity.IsAuthenticated)
                     {
-                        <a asp-controller="Cart" asp-action="Add" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-success me-2">
-                            <i class="bi bi-cart-plus"></i> Add to Cart
-                        </a>
+                        <form asp-controller="Products" asp-action="AddToCart" method="post" class="d-inline">
+                            <input type="hidden" name="rowId" value="@product.RowKey" />
+                            <input type="hidden" name="name" value="@product.Name" />
+                            <input type="hidden" name="price" value="@product.Price" />
+                            <input type="hidden" name="imageUrl" value="@product.ImageUrl" />
+                            <input type="hidden" name="category" value="@product.Category" />
+                            <input type="hidden" name="sizes" value="@product.Sizes" />
+
+                            <select name="selectedSize" class="form-select form-select-sm mb-2" required>
+                                @foreach (var size in product.Sizes?.Split(',') ?? new string[0])
+                                {
+                                    <option value="@size.Trim()">@size.Trim()</option>
+                                }
+                            </select>
+
+                            <button type="submit" class="btn btn-success me-2">
+                                <i class="bi bi-cart-plus"></i> Add to Cart
+                            </button>
+                        </form>
                     }
 
                     <a asp-action="Details" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-outline-primary me-2">
@@ -52,15 +68,11 @@
 
                     @if (User.IsInRole("Admin"))
                     {
-                        <a asp-action="Edit" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-warning me-2">
-                            Edit
-                        </a>
-                        <a asp-action="Delete" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-danger">
-                            Delete
-                        </a>
+                        <a asp-action="Edit" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-warning me-2">Edit</a>
+                        <a asp-action="Delete" asp-route-partitionKey="@product.PartitionKey" asp-route-rowKey="@product.RowKey" class="btn btn-danger">Delete</a>
                     }
                 </div>
             </div>
         </div>
     }
-</div>
+</div>.

@@ -35,6 +35,8 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
 .AddEntityFrameworkStores<ST10444488_POEContext>()
 .AddDefaultTokenProviders();
 
+builder.Services.AddSingleton<FunctionService>();
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));

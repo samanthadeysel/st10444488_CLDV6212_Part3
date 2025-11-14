@@ -1,99 +1,129 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Azure;
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Mvc;
-using ST10444488_POE.Storage_Services;
-using System.Text.Json;
 using ST10444488_POE.Models;
-using ST10444488_POE.Storage_Services;
+using System.Text.Json;
 
-public class ProductsController : Controller
+namespace ST10444488_POE.Controllers
 {
-    private readonly FunctionService _functionService;
-
-    public ProductsController(FunctionService functionService)
+    public class ProductsController : Controller
     {
-        _functionService = functionService;
-    }
+        private readonly IConfiguration _config;
+        private readonly string _tableName = "Products";
 
-    [AllowAnonymous]
-    public async Task<IActionResult> Index()
-    {
-        var result = await _functionService.CallFunctionAsync("GetProductList", null);
-        if (string.IsNullOrWhiteSpace(result) || result.StartsWith("<"))
+        public ProductsController(IConfiguration config)
         {
-            ViewBag.Error = "Unable to load products.";
-            return View(new List<Product>());
+            _config = config;
         }
 
-        var products = JsonSerializer.Deserialize<List<Product>>(result);
-        return View(products);
-    }
-
-    [Authorize(Roles = "Admin")]
-    public IActionResult Create() => View();
-
-    [HttpPost]
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Create(Product product, IFormFile ImageFile)
-    {
-        product.RowKey = Guid.NewGuid().ToString();
-
-        if (ImageFile != null && ImageFile.Length > 0)
+        public async Task<IActionResult> Index()
         {
-            using var ms = new MemoryStream();
-            await ImageFile.CopyToAsync(ms);
-            var base64 = Convert.ToBase64String(ms.ToArray());
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            await tableClient.CreateIfNotExistsAsync();
 
-            var uploadRequest = new
-            {
-                ProductId = product.RowKey,
-                FileName = ImageFile.FileName,
-                FileData = base64
-            };
+            var products = tableClient.Query<Product>().ToList();
+            return View(products);
+        }
 
-            var resultJson = await _functionService.CallFunctionAsync("UploadProductImage", uploadRequest);
-            if (string.IsNullOrWhiteSpace(resultJson) || resultJson.StartsWith("<"))
+        public async Task<IActionResult> Details(string partitionKey, string rowKey)
+        {
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            var product = await tableClient.GetEntityAsync<Product>(partitionKey, rowKey);
+            return View(product.Value);
+        }
+
+        public IActionResult Create()
+        {
+            return View();
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Create(Product product, IFormFile ImageFile)
+        {
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            await tableClient.CreateIfNotExistsAsync();
+
+            product.PartitionKey = "Bakery";
+            product.RowKey = Guid.NewGuid().ToString();
+
+            if (ImageFile != null && ImageFile.Length > 0)
             {
-                ViewBag.Error = "Image upload failed.";
-                return View(product);
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                var containerClient = blobServiceClient.GetBlobContainerClient("productimages");
+                await containerClient.CreateIfNotExistsAsync();
+
+                var blobClient = containerClient.GetBlobClient($"{product.RowKey}_{ImageFile.FileName}");
+                using var stream = ImageFile.OpenReadStream();
+                await blobClient.UploadAsync(stream, overwrite: true);
+
+                product.ImageUrl = blobClient.Uri.ToString();
             }
 
-            var result = JsonSerializer.Deserialize<Dictionary<string, string>>(resultJson);
-            product.ImageUrl = result["imageUrl"];
+            await tableClient.AddEntityAsync(product);
+            return RedirectToAction("Index");
         }
 
-        await _functionService.CallFunctionAsync("InsertProduct", product);
-        return RedirectToAction(nameof(Index));
-    }
-
-    [AllowAnonymous]
-    public async Task<IActionResult> Details(string partitionKey, string rowKey)
-    {
-        var result = await _functionService.CallFunctionAsync("GetProductDetails", new { PartitionKey = partitionKey, RowKey = rowKey });
-        if (string.IsNullOrWhiteSpace(result) || result.StartsWith("<"))
+        public async Task<IActionResult> Edit(string partitionKey, string rowKey)
         {
-            ViewBag.Error = "Product not found.";
-            return View(new Product());
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            var product = await tableClient.GetEntityAsync<Product>(partitionKey, rowKey);
+            return View(product.Value);
         }
 
-        var product = JsonSerializer.Deserialize<Product>(result);
-        return View(product);
-    }
+        [HttpPost]
+        public async Task<IActionResult> Edit(Product product)
+        {
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            await tableClient.UpdateEntityAsync(product, ETag.All, TableUpdateMode.Replace);
+            return RedirectToAction("Index");
+        }
 
-    [Authorize]
-    public async Task<IActionResult> AddToCart(string partitionKey, string rowKey)
-    {
-        var result = await _functionService.CallFunctionAsync("GetProductDetails", new { PartitionKey = partitionKey, RowKey = rowKey });
-        var product = JsonSerializer.Deserialize<Product>(result);
+        public async Task<IActionResult> Delete(string partitionKey, string rowKey)
+        {
+            string connectionString = _config["AzureStorage:ConnectionString"];
+            var tableClient = new TableClient(connectionString, _tableName);
+            await tableClient.DeleteEntityAsync(partitionKey, rowKey);
+            return RedirectToAction("Index");
+        }
 
-        var cartJson = HttpContext.Session.GetString("Cart");
-        var cart = string.IsNullOrEmpty(cartJson)
-            ? new List<Product>()
-            : JsonSerializer.Deserialize<List<Product>>(cartJson);
+        [HttpPost]
+        public IActionResult AddToCart(string rowId, string name, decimal price, string imageUrl, string category, string sizes, string selectedSize)
+        {
+            var cartJson = HttpContext.Session.GetString("CART");
+            var cart = string.IsNullOrEmpty(cartJson)
+                ? new List<Cart>()
+                : JsonSerializer.Deserialize<List<Cart>>(cartJson) ?? new List<Cart>();
 
-        cart.Add(product);
+            var existingItem = cart.FirstOrDefault(c => c.RowKey == rowId && c.SelectedSize == selectedSize);
+            if (existingItem != null)
+            {
+                existingItem.Quantity += 1;
+            }
+            else
+            {
+                var cartItem = new Cart
+                {
+                    RowKey = rowId,
+                    Name = name,
+                    Price = price,
+                    Quantity = 1,
+                    ImageUrl = imageUrl,
+                    Category = category,
+                    SelectedSize = selectedSize,
+                    Sizes = sizes
+                };
 
-        HttpContext.Session.SetString("Cart", JsonSerializer.Serialize(cart));
+                cart.Add(cartItem);
+            }
 
-        return RedirectToAction("Index", "Cart");
+            HttpContext.Session.SetString("CART", JsonSerializer.Serialize(cart));
+            return RedirectToAction("Index", "Cart");
+        }
     }
 }
