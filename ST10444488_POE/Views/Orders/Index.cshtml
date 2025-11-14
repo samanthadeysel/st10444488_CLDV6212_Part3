@@ -35,6 +35,10 @@
                     <a asp-action="Details" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Details</a> |
                     <a asp-action="Edit" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Edit</a> |
                     <a asp-action="Delete" asp-route-rowKey="@order.RowKey" asp-route-partitionKey="@order.PartitionKey">Delete</a>
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <a asp-action="Process" asp-route-partitionKey="@order.PartitionKey" asp-route-rowKey="@order.RowKey" class="btn btn-sm btn-warning">Process</a>
+                    }
                 </td>
             </tr>
         }

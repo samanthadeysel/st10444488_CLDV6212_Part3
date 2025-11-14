@@ -12,8 +12,26 @@
         <div class="banner-content">
             <ul class="nav-left">
                 <li><a asp-controller="Home" asp-action="Index">Home</a></li>
+                <li><a asp-controller="Accounts" asp-action="Login">Login</a></li>
                 <li><a asp-controller="Products" asp-action="Index">Products</a></li>
+                <li>
+                    <a asp-controller="Cart" asp-action="Index" class="position-relative">
+                        🛒 Cart
+                        @{
+                            var cartJson = Context.Session.GetString("CART");
+                            var cart = string.IsNullOrEmpty(cartJson)
+                            ? new List<ST10444488_POE.Models.Cart>()
+                            : System.Text.Json.JsonSerializer.Deserialize<List<ST10444488_POE.Models.Cart>>(cartJson);
+                            var count = cart?.Count ?? 0;
+                        }
+                        @if (count > 0)
+                        {
+                            <span class="badge bg-danger position-absolute top-0 start-100 translate-middle">@count</span>
+                        }
+                    </a>
+                </li>
             </ul>
+
 
             <div class="brand-title">GINGER BAKERY</div>
 

@@ -1,8 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using ST10444488_POE.Data;
+using Microsoft.AspNetCore.Identity;
 using ST10444488_POE.Models;
-using System;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -10,66 +8,71 @@ namespace ST10444488_POE.Controllers
 {
     public class AccountsController : Controller
     {
-        private readonly ST10444488_POEContext _context;
+        private readonly UserManager<User> _userManager;
+        private readonly SignInManager<User> _signInManager;
 
-        public AccountsController(ST10444488_POEContext context)
+        public AccountsController(UserManager<User> userManager, SignInManager<User> signInManager)
         {
-            _context = context;
+            _userManager = userManager;
+            _signInManager = signInManager;
         }
 
         public IActionResult Register() => View();
         public IActionResult Login() => View();
 
         [HttpPost]
-        public async Task<IActionResult> Register(string username, string password, string email, string phoneNumber, string role)
+        public async Task<IActionResult> Register(string username, string password, string confirmPassword, string email, string phoneNumber, string role)
         {
-            var exists = await _context.Users.AnyAsync(u => u.Username == username);
-            if (exists)
+            if (password != confirmPassword)
             {
-                ViewBag.Error = "Username already exists.";
+                ViewBag.Error = "Passwords do not match.";
                 return View();
             }
 
             var user = new User
             {
-                Username = username,
-                PasswordHash = Hash(password),
+                UserName = username,
                 Email = email,
                 PhoneNumber = phoneNumber,
                 Role = role
             };
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-
-            return RedirectToAction("Login");
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> Login(string username, string password)
-        {
-            var hash = Hash(password);
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == username && u.PasswordHash == hash);
-
-            if (user != null)
+            var result = await _userManager.CreateAsync(user, password);
+            if (result.Succeeded)
             {
-                HttpContext.Session.SetInt32("UserId", user.UserId);
-                HttpContext.Session.SetString("Role", user.Role);
-                return RedirectToAction("Index", "Home");
+                await _userManager.AddToRoleAsync(user, role);
+                return RedirectToAction("Login");
             }
 
-            ViewBag.Error = "Invalid login.";
+            ViewBag.Error = string.Join("; ", result.Errors.Select(e => e.Description));
             return View();
         }
 
-        private string Hash(string input)
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Login(string Username, string Password)
         {
-            using var sha = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(input);
-            var hash = sha.ComputeHash(bytes);
-            return Convert.ToBase64String(hash);
+            if (string.IsNullOrEmpty(Username) || string.IsNullOrEmpty(Password))
+            {
+                ViewBag.Error = "Username and password are required.";
+                return View();
+            }
+
+            var user = await _userManager.FindByNameAsync(Username);
+            if (user == null)
+            {
+                ViewBag.Error = "Invalid login attempt.";
+                return View();
+            }
+
+            var result = await _signInManager.PasswordSignInAsync(user.UserName, Password, isPersistent: false, lockoutOnFailure: false);
+            if (result.Succeeded)
+            {
+                return RedirectToAction("Index", "Home");
+            }
+
+            ViewBag.Error = "Invalid login attempt.";
+            return View();
         }
     }
-
 }

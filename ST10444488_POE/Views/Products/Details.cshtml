@@ -45,11 +45,19 @@
                     </dd>
                 }
             </dl>
-        </div>
-    </div>
 
-    <div class="mt-4">
-        <a asp-action="Edit" asp-route-id="@Model?.RowKey" class="btn btn-primary me-2">Edit</a>
-        <a asp-action="Index" class="btn btn-secondary">Back to List</a>
+            <div class="mt-4">
+                <form asp-controller="Cart" asp-action="AddToCart" method="post">
+                    <input type="hidden" name="productId" value="@Model.RowKey" />
+                    <input type="hidden" name="name" value="@Model.Name" />
+                    <input type="hidden" name="price" value="@Model.Price" />
+                    <input type="hidden" name="imageUrl" value="@Model.ImageUrl" />
+                    <button type="submit" class="btn btn-success me-2">Add to Cart</button>
+                </form>
+
+                <a asp-action="Edit" asp-route-id="@Model?.RowKey" class="btn btn-primary me-2">Edit</a>
+                <a asp-action="Index" class="btn btn-secondary">Back to List</a>
+            </div>
+        </div>
     </div>
 </div>

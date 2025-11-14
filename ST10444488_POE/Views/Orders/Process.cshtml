@@ -1,0 +1,20 @@
+﻿@model ST10444488_POE.Models.Order
+
+<h2>Process Order</h2>
+
+<form asp-action="Process" method="post">
+    <input type="hidden" asp-for="PartitionKey" />
+    <input type="hidden" asp-for="RowKey" />
+
+    <div class="form-group">
+        <label asp-for="Status">Status</label>
+        <select asp-for="Status" class="form-control">
+            <option>Pending</option>
+            <option>Processing</option>
+            <option>Completed</option>
+            <option>Cancelled</option>
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Update Status</button>
+</form>

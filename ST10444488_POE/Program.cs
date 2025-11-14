@@ -7,40 +7,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ST10444488_POE.Data;
 using ST10444488_POE.Models;
-using ST10444488_POE.StorageServices;
-using System;
+using ST10444488_POE.Storage_Services;
 using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddHttpClient<FunctionService>();
+builder.Services.AddSession();
 builder.Services.AddMvc().AddSessionStateTempDataProvider();
+
 builder.Services.AddDbContext<ST10444488_POEContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("AzureSQL")));
-
-builder.Services.AddSingleton(sp =>
-{
-    var conn = Environment.GetEnvironmentVariable("StorageConnection");
-    return new BlobStorage(conn, "product-images");
-});
-
-builder.Services.AddSingleton(sp =>
-{
-    var conn = Environment.GetEnvironmentVariable("StorageConnection");
-    return new TableStorage(conn);
-});
-
-builder.Services.AddSingleton(sp =>
-{
-    var conn = Environment.GetEnvironmentVariable("StorageConnection");
-    return new QueueStorage(conn, "order-queue");
-});
-
-builder.Services.AddSingleton(sp =>
-{
-    var conn = Environment.GetEnvironmentVariable("StorageConnection");
-    return new FileStorage(conn, "customer-files", "documents");
-});
 
 builder.Services.AddIdentity<User, IdentityRole>(options =>
 {
@@ -50,14 +28,18 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
     options.Password.RequiredLength = 10;
     options.User.RequireUniqueEmail = true;
 
-    options.SignIn.RequireConfirmedAccount = true;
-    options.SignIn.RequireConfirmedPhoneNumber = true;
-    options.SignIn.RequireConfirmedEmail = true;
+    options.SignIn.RequireConfirmedAccount = false;
+    options.SignIn.RequireConfirmedPhoneNumber = false;
+    options.SignIn.RequireConfirmedEmail = false;
 })
 .AddEntityFrameworkStores<ST10444488_POEContext>()
 .AddDefaultTokenProviders();
 
-
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+    options.AddPolicy("CustomerOnly", policy => policy.RequireRole("Customer"));
+});
 
 var app = builder.Build();
 
@@ -67,17 +49,29 @@ CultureInfo.DefaultThreadCurrentUICulture = cultureInfo;
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseDeveloperExceptionPage(); 
+    app.UseDeveloperExceptionPage();
 }
 else
 {
-    app.UseExceptionHandler("/Home/Error"); 
+    app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
+}
+
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var roles = new[] { "Admin", "Customer" };
+    foreach (var role in roles)
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole(role));
+    }
 }
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 

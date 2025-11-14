@@ -1,69 +1,68 @@
-﻿using Azure;
-using Azure.Data.Tables;
-using Azure.Storage.Queues;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using ST10444488_POE.Models;
+using ST10444488_POE.Storage_Services;
 using System.Text.Json;
-using System.Text;
-using System.Net.Http;
 
 namespace ST10444488_POE.Controllers
 {
     public class CustomersController : Controller
     {
-        private readonly TableClient _customerTable;
-        private readonly TableClient _productTable;
-        private readonly QueueClient _queueClient;
-        private readonly IConfiguration _config;
+        private readonly FunctionService _functionService;
 
-        public CustomersController(IConfiguration configuration)
+        public CustomersController(FunctionService functionService)
         {
-            _config = configuration;
-            string connectionString = configuration["AzureStorage:ConnectionString"];
-
-            _customerTable = new TableClient(connectionString, "CustomerTable");
-            _productTable = new TableClient(connectionString, "ProductTable");
-            _queueClient = new QueueClient(connectionString, "customer-queue");
-
-            _customerTable.CreateIfNotExists();
-            _productTable.CreateIfNotExists();
-            _queueClient.CreateIfNotExists();
+            _functionService = functionService;
         }
 
-        public IActionResult Index() =>
-            View(_customerTable.Query<Customer>().ToList());
-
-        public IActionResult Details(string partitionKey, string rowKey)
+        public async Task<IActionResult> Index()
         {
-            var customer = _customerTable.GetEntity<Customer>(partitionKey, rowKey).Value;
+            var result = await _functionService.CallFunctionAsync("GetCustomers", null);
+
+            if (string.IsNullOrWhiteSpace(result) || result.TrimStart().StartsWith("<"))
+            {
+                ViewBag.Error = "Failed to load customers.";
+                return View(new List<Customer>());
+            }
+
+            var allCustomers = JsonSerializer.Deserialize<List<Customer>>(result);
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var userCustomer = allCustomers.FirstOrDefault(c => c.IdentityUserId == userId);
+
+            return View(userCustomer != null ? new List<Customer> { userCustomer } : new List<Customer>());
+        }
+
+        public async Task<IActionResult> Details(string partitionKey, string rowKey)
+        {
+            var result = await _functionService.CallFunctionAsync("GetCustomer", new { PartitionKey = partitionKey, RowKey = rowKey });
+            var customer = JsonSerializer.Deserialize<Customer>(result);
             return View(customer);
         }
 
-        public IActionResult Create()
+        public async Task<IActionResult> Create()
         {
-            ViewBag.Customers = _customerTable.Query<Customer>().ToList();
-            ViewBag.Products = _productTable.Query<Product>().ToList();
+            var result = await _functionService.CallFunctionAsync("GetProducts", null);
+            var products = JsonSerializer.Deserialize<List<Product>>(result);
+            ViewBag.Products = products;
             return View();
         }
 
         [HttpPost]
         public async Task<IActionResult> Create(Customer customer)
         {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            customer.IdentityUserId = userId;
+
             customer.RowKey = Guid.NewGuid().ToString();
             customer.PartitionKey = "Customer";
 
-            await _customerTable.AddEntityAsync(customer);
-
-            // 🔗 Enqueue customer for Azure Function to process
-            var message = JsonSerializer.Serialize(customer);
-            await _queueClient.SendMessageAsync(message);
-
-            return RedirectToAction(nameof(Index));
+            await _functionService.CallFunctionAsync("InsertCustomer", customer);
+            return RedirectToAction("Details", new { partitionKey = customer.PartitionKey, rowKey = customer.RowKey });
         }
 
-        public IActionResult Edit(string partitionKey, string rowKey)
+        public async Task<IActionResult> Edit(string partitionKey, string rowKey)
         {
-            var customer = _customerTable.GetEntity<Customer>(partitionKey, rowKey).Value;
+            var result = await _functionService.CallFunctionAsync("GetCustomer", new { PartitionKey = partitionKey, RowKey = rowKey });
+            var customer = JsonSerializer.Deserialize<Customer>(result);
             return View(customer);
         }
 
@@ -72,19 +71,9 @@ namespace ST10444488_POE.Controllers
         {
             try
             {
-                var response = await _customerTable.GetEntityAsync<Customer>(updated.PartitionKey, updated.RowKey);
-                var customer = response.Value;
-
-                customer.FirstName = updated.FirstName;
-                customer.LastName = updated.LastName;
-                customer.Email = updated.Email;
-                customer.Cellnumber = updated.Cellnumber;
-                customer.Address = updated.Address;
-                customer.Document = updated.Document;
-
-                await _customerTable.UpdateEntityAsync(customer, ETag.All, TableUpdateMode.Replace);
+                await _functionService.CallFunctionAsync("UpdateCustomer", updated);
             }
-            catch (RequestFailedException ex)
+            catch (Exception ex)
             {
                 ModelState.AddModelError("", $"Error updating customer: {ex.Message}");
                 return View(updated);
@@ -93,16 +82,17 @@ namespace ST10444488_POE.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        public IActionResult Delete(string partitionKey, string rowKey)
+        public async Task<IActionResult> Delete(string partitionKey, string rowKey)
         {
-            var customer = _customerTable.GetEntity<Customer>(partitionKey, rowKey).Value;
+            var result = await _functionService.CallFunctionAsync("GetCustomer", new { PartitionKey = partitionKey, RowKey = rowKey });
+            var customer = JsonSerializer.Deserialize<Customer>(result);
             return View(customer);
         }
 
         [HttpPost, ActionName("Delete")]
         public async Task<IActionResult> DeleteConfirmed(string partitionKey, string rowKey)
         {
-            await _customerTable.DeleteEntityAsync(partitionKey, rowKey);
+            await _functionService.CallFunctionAsync("DeleteCustomer", new { PartitionKey = partitionKey, RowKey = rowKey });
             return RedirectToAction(nameof(Index));
         }
     }

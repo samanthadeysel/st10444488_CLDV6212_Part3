@@ -1,6 +1,7 @@
 ﻿using Azure;
 using Azure.Data.Tables;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ST10444488_POE.Models
 {
@@ -14,8 +15,10 @@ namespace ST10444488_POE.Models
         public string Cellnumber { get; set; }
         public string Address { get; set; }
         public string Document { get; set; }
+        public string IdentityUserId { get; set; }
 
         public DateTimeOffset? Timestamp { get; set; }
+        [NotMapped]
         public ETag ETag { get; set; }
 
     }
